@@ -13,7 +13,7 @@ The analysis compares average NDVI values in the 30 days before and after crop s
 # Project Structure
 
 ```text
-satellite-intelligence-assignment/
+satellite-intelligence/
 ├── data/
 │   ├── parcel_readings.csv
 │   └── parcel_metadata.csv
@@ -194,6 +194,48 @@ python src/pipeline.py
 * numpy
 
 ---
+
+## Data Quality Audit
+
+| Issue | Count | Action Taken |
+|-------|-------|--------------|
+| Mixed date formats (3 formats: DD/MM/YYYY, YYYY-MM-DD, DD-Mon-YYYY) | across 3447 rows | Standardized using pd.to_datetime() with dayfirst=True |
+| Invalid NDVI values (outside -1 to 1) | 104 rows | Replaced with NaN |
+| Missing sensor_status | 137 rows | Filled as "unknown" |
+| Inconsistent sensor_status casing/spacing (ok, OK, OK , Error, ERROR etc.) | 8 variants | Stripped and normalized to lowercase |
+| Duplicate parcel+date combinations | 8 rows | Logged and retained — multiple readings per day valid in sensor data |
+| Exact duplicates | 0 | No action needed |
+
+---
+
+# Production Readiness Reflection
+
+## What three things would you change?
+
+1. **Switch from Pandas to PySpark/Databricks** — Pandas loads everything into memory. At 100x scale (~350K rows), this would cause memory issues. PySpark handles distributed processing and can scale horizontally.
+
+2. **Replace CSV with Delta Lake format** — CSVs have no schema enforcement, no ACID transactions, and no versioning. Delta Lake gives you all three plus time travel for debugging bad runs.
+
+3. **Parameterize the pipeline with a config file** — Currently paths are hardcoded. For daily runs, input paths, date ranges, and thresholds should come from a config so you can change them without touching code.
+
+## What would you monitor in production?
+
+- Row count after each stage — to catch silent data drops mid-pipeline
+- Null rate on `ndvi_value` column — a sudden spike means sensor issues upstream
+- `sensor_status` distribution daily — if "error" % increases, something is wrong with the source
+- Pipeline run duration — sudden slowdowns indicate data volume anomalies
+
+## What is the most likely thing to silently break?
+
+Date parsing. If the upstream sensor system changes its date format slightly, `pd.to_datetime()` will silently produce `NaT` values instead of throwing an error. This would corrupt the entire NDVI window calculation — before/after sowing comparisons would return NaN with no warning.
+
+---
+
+# AI Usage
+
+Claude (Anthropic) was used during this assignment for code review, debugging pipeline logic, and README structuring. All analytical decisions, data quality observations, and interpretations are my own.
+
+
 
 # Author
 
